@@ -1,6 +1,18 @@
 import streamlit as st
 import pandas as pd
 
+def map_columns(df):
+    mapping = {
+        'Date': 'Fecha',
+        'Status': 'Estado',
+        'Amount': 'Monto',
+        'Commission': 'Comisión',
+        'Net Profit': 'Ganancia Neta'
+    }
+    # Esto limpia espacios y busca las columnas correctas
+    df.columns = [c.strip() for c in df.columns]
+    return df.rename(columns=mapping)
+
 # Configuración de Página
 st.set_page_config(
     page_title="Auditor de Ganancias Pro",
