@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 # 1. CONFIGURACIÓN VISUAL
-st.set_page_config(page_title="Auditor de Ganancias Pro", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="ROI Hunter v1.0", page_icon="🛡️", layout="wide")
 
 # 2. FUNCIÓN DE LIMPIEZA EXTREMA
 def limpiar_dinero(serie):
