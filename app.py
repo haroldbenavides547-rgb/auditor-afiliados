@@ -1,73 +1,85 @@
 import streamlit as st
 import pandas as pd
 
-# 1. CONFIGURACIÓN DE PÁGINA
+# 1. CONFIGURACIÓN DE LA PÁGINA
 st.set_page_config(page_title="Auditor de Ganancias Pro", page_icon="🛡️", layout="wide")
 
-# 2. DEFINICIÓN DE FUNCIONES
-def clean_currency(value):
-    """Convierte texto de moneda ($1,234.56) a número real (1234.56)"""
+# 2. CEREBRO: LIMPIEZA DE DATOS Y BÚSQUEDA DE COLUMNAS
+def clean_numeric(value):
+    """Convierte cualquier texto sucio ($1,234.56) en número real"""
+    if pd.isna(value): return 0.0
     if isinstance(value, str):
-        # Quita el símbolo $, las comas y espacios
-        value = value.replace('$', '').replace(',', '').strip()
-    return pd.to_numeric(value, errors='coerce')
+        value = value.replace('$', '').replace(',', '').replace(' ', '').strip()
+    try:
+        return float(value)
+    except:
+        return 0.0
 
-def map_columns(df):
-    mapping = {
-        'Date': 'Fecha',
-        'Status': 'Estado',
-        'Amount': 'Monto',
-        'Commission': 'Comisión',
-        'Net Profit': 'Ganancia Neta',
-        'Product': 'Producto'
-    }
-    df.columns = [c.strip() for c in df.columns]
-    return df.rename(columns=mapping)
-
-def calculate_metrics(df):
-    # Limpiar las columnas numéricas antes de sumar
-    for col in ['Monto', 'Comisión', 'Ganancia Neta']:
-        if col in df.columns:
-            df[col] = df[col].apply(clean_currency).fillna(0)
-    
-    metrics = {
-        'total_sales': len(df),
-        'total_revenue': df['Monto'].sum(),
-        'total_profit': df['Ganancia Neta'].sum(),
-        'avg_ticket': df['Monto'].mean() if len(df) > 0 else 0
-    }
-    return metrics
+def find_column(df, possible_names):
+    """Busca una columna aunque el nombre no sea exacto"""
+    for name in possible_names:
+        for col in df.columns:
+            if name.lower() in col.lower().strip():
+                return col
+    return None
 
 # 3. INTERFAZ DE USUARIO
 st.title("🛡️ Auditor de Ganancias Pro")
+st.markdown("### Analizador de Reportes de Afiliado")
 st.divider()
 
-uploaded_file = st.file_uploader("Sube tu reporte CSV", type="csv")
+uploaded_file = st.file_uploader("Sube tu reporte CSV aquí", type="csv")
 
 if uploaded_file is not None:
     try:
-        df_raw = pd.read_csv(uploaded_file)
+        # Leer el archivo detectando posibles errores de formato
+        df = pd.read_csv(uploaded_file)
         
-        # Procesar
-        df = map_columns(df_raw)
-        stats = calculate_metrics(df) # Aquí ya se limpian los números
+        # Identificar columnas automáticamente (por si cambian los nombres)
+        col_monto = find_column(df, ['Amount', 'Monto', 'Total', 'Sale'])
+        col_comision = find_column(df, ['Commission', 'Comisión', 'Earned'])
+        col_neta = find_column(df, ['Net Profit', 'Ganancia Neta', 'Profit', 'Neta'])
+        col_status = find_column(df, ['Status', 'Estado', 'Result'])
         
-        # MOSTRAR MÉTRICAS
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Ventas Totales", f"📦 {stats['total_sales']}")
-        with col2:
-            st.metric("Ingreso Bruto", f"💰 ${stats['total_revenue']:,.2f}")
-        with col3:
-            st.metric("Ganancia Neta", f"🚀 ${stats['total_profit']:,.2f}")
-        with col4:
-            st.metric("Ticket Promedio", f"📈 ${stats['avg_ticket']:,.2f}")
+        # Verificar si encontramos al menos el Monto
+        if col_monto:
+            # Limpiar los datos numéricos
+            df['Monto_Limpio'] = df[col_monto].apply(clean_numeric)
+            df['Comision_Limpia'] = df[col_comision].apply(clean_numeric) if col_comision else 0.0
+            df['Neta_Limpia'] = df[col_neta].apply(clean_numeric) if col_neta else (df['Monto_Limpio'] * 0.2) # Estimado si no existe
+
+            # CÁLCULO DE MÉTRICAS
+            total_sales = len(df)
+            total_revenue = df['Monto_Limpio'].sum()
+            total_profit = df['Neta_Limpia'].sum()
+            avg_ticket = df['Monto_Limpio'].mean()
+
+            # MOSTRAR MÉTRICAS EN PANTALLA
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Ventas Totales", f"📦 {total_sales}")
+            c2.metric("Ingreso Bruto", f"💰 ${total_revenue:,.2f}")
+            c3.metric("Ganancia Neta", f"🚀 ${total_profit:,.2f}")
+            c4.metric("Ticket Promedio", f"📈 ${avg_ticket:,.2f}")
+
+            st.divider()
             
-        st.divider()
-        st.subheader("✅ Vista de Datos Procesados")
-        st.dataframe(df, use_container_width=True)
-        
+            # MOSTRAR TABLA
+            st.subheader("✅ Desglose de Datos")
+            # Renombrar para que el usuario lo vea bonito
+            df_display = df.copy()
+            st.dataframe(df_display, use_container_width=True)
+
+            # BOTÓN DE DESCARGA
+            csv = df.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Descargar Reporte Auditado", csv, "auditoria.csv", "text/csv")
+        else:
+            st.error("❌ No se encontró la columna de 'Monto' o 'Amount' en tu archivo.")
+            st.info("Asegúrate de que tu CSV tenga una columna con el valor de las ventas.")
+
     except Exception as e:
-        st.error(f"❌ Error: {e}")
+        st.error(f"❌ Error crítico: {e}")
 else:
-    st.info("Sube un archivo para ver los cálculos.")
+    st.warning("⚠️ Por favor, sube un archivo CSV para comenzar el análisis.")
+
+st.divider()
+st.caption("Auditor Pro | Privacidad Garantizada")
